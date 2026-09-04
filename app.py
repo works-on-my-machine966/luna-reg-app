@@ -4,6 +4,7 @@ import tempfile
 import numpy as np
 import cv2
 import streamlit as st
+import scipy.optimize as opt
 from PIL import Image
 from skimage.metrics import normalized_mutual_information
 from reportlab.lib.pagesizes import letter
@@ -42,7 +43,22 @@ def get_feature_detector():
     else:
         return cv2.ORB_create(nfeatures=5000), cv2.NORM_HAMMING
 
-# --- HOMOGRAPHY-BASED REGISTRATION ENGINE ---
+# --- FINE REGISTRATION OPTIMIZATION OBJECTIVE ---
+
+def nmi_objective_function(params: np.ndarray, src_gray: np.ndarray, ref_gray: np.ndarray) -> float:
+    """Objective function for Quasi-Newton (L-BFGS-B) optimization minimizing negative NMI."""
+    tx, ty, angle, scale = params
+    h, w = ref_gray.shape[:2]
+    
+    center = (w / 2, h / 2)
+    M = cv2.getRotationMatrix2D(center, angle, scale)
+    M[0, 2] += tx
+    M[1, 2] += ty
+    
+    warped = cv2.warpAffine(src_gray, M, (w, h), flags=cv2.INTER_LINEAR)
+    return -float(normalized_mutual_information(ref_gray, warped))
+
+# --- HYBRID (COARSE + QUASI-NEWTON FINE) REGISTRATION ENGINE ---
 
 def register_images_robust(ref_img: np.ndarray, src_img: np.ndarray):
     ref_h, ref_w = ref_img.shape[:2]
@@ -92,9 +108,39 @@ def register_images_robust(ref_img: np.ndarray, src_img: np.ndarray):
                 if current_inliers >= 10:
                     inliers_count = current_inliers
                     matched_pts = pts_ref[mask.ravel() == 1]
-                    final_registered = cv2.warpPerspective(src_img, H, (ref_w, ref_h))
-                    final_dx = float(H[0, 2])
-                    final_dy = float(H[1, 2])
+                    
+                    # STAGE 1: Coarse Registration (RANSAC Homography)
+                    coarse_warped = cv2.warpPerspective(src_img, H, (ref_w, ref_h))
+                    
+                    # STAGE 2: Fine Registration (Quasi-Newton L-BFGS-B Optimization)
+                    try:
+                        gray_coarse = cv2.cvtColor(coarse_warped, cv2.COLOR_RGB2GRAY) if len(coarse_warped.shape) == 3 else coarse_warped
+                        
+                        initial_guess = [0.0, 0.0, 0.0, 1.0]
+                        param_bounds = [(-8.0, 8.0), (-8.0, 8.0), (-2.0, 2.0), (0.98, 1.02)]
+                        
+                        opt_result = opt.minimize(
+                            nmi_objective_function,
+                            initial_guess,
+                            args=(gray_coarse, gray_ref),
+                            method='L-BFGS-B',
+                            bounds=param_bounds,
+                            options={'maxiter': 20, 'ftol': 1e-3}
+                        )
+                        
+                        tx, ty, angle, scale = opt_result.x
+                        M_fine = cv2.getRotationMatrix2D((ref_w / 2, ref_h / 2), angle, scale)
+                        M_fine[0, 2] += tx
+                        M_fine[1, 2] += ty
+                        
+                        final_registered = cv2.warpAffine(coarse_warped, M_fine, (ref_w, ref_h))
+                        final_dx = float(H[0, 2] + tx)
+                        final_dy = float(H[1, 2] + ty)
+                    except Exception:
+                        # Fall back to coarse output if continuous optimizer diverges
+                        final_registered = coarse_warped
+                        final_dx = float(H[0, 2])
+                        final_dy = float(H[1, 2])
 
     gray_final = cv2.cvtColor(final_registered, cv2.COLOR_RGB2GRAY) if len(final_registered.shape) == 3 else final_registered
     
@@ -147,7 +193,7 @@ def generate_pdf_report(pdf_path: str, metrics: dict, ref_hash: str, src_hash: s
         status_color = pass_style if metrics['inliers'] >= 10 else fail_style
 
         story.append(Paragraph(f"Chandrayaan-2 Registration Benchmark Report: {sensor_label}", title_style))
-        story.append(Paragraph("Smart India Hackathon | Multimodal Alignment Engine", styles['Normal']))
+        story.append(Paragraph("Smart India Hackathon | Multimodal Hybrid Alignment Engine", styles['Normal']))
         story.append(Spacer(1, 6))
         story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#2563EB'), spaceBefore=0, spaceAfter=8))
 
@@ -169,7 +215,7 @@ def generate_pdf_report(pdf_path: str, metrics: dict, ref_hash: str, src_hash: s
         story.append(Paragraph("2. Performance & Precision Metrics", h2_style))
         m_data = [
             [Paragraph("Pipeline Stage", cell_bold), Paragraph("Algorithm Method", cell_bold), Paragraph("Measured Metric", cell_bold), Paragraph("Status", cell_bold)],
-            [Paragraph("Registration Engine", cell_norm), Paragraph("AKAZE/ORB + Homography RANSAC", cell_norm), Paragraph(f"RMSE: {metrics['coarse_rmse']:.2f}", cell_norm), Paragraph(status_text, status_color)],
+            [Paragraph("Registration Engine", cell_norm), Paragraph("RANSAC + Quasi-Newton (L-BFGS-B)", cell_norm), Paragraph(f"RMSE: {metrics['coarse_rmse']:.2f}", cell_norm), Paragraph(status_text, status_color)],
             [Paragraph("Total Shift", cell_norm), Paragraph("Sub-Pixel Offset Vector", cell_norm), Paragraph(f"Shift: ({metrics['shift'][0]:.2f}, {metrics['shift'][1]:.2f}) px", cell_norm), Paragraph(status_text, status_color)],
             [Paragraph("Spatial Uniformity", cell_norm), Paragraph("4x4 Grid Shannon Entropy", cell_norm), Paragraph(f"Score: {metrics['uniformity']:.4f}", cell_norm), Paragraph("PASS" if metrics['inliers'] >= 10 else "LOW", status_color)],
             [Paragraph("Multimodal Similarity", cell_norm), Paragraph("Normalized Mutual Info (NMI)", cell_norm), Paragraph(f"NMI Score: {metrics['nmi']:.4f}", cell_norm), Paragraph("PASS" if metrics['inliers'] >= 10 else "LOW", status_color)],
@@ -200,7 +246,7 @@ def render_alignment_module(ref_np, moving_np, ref_hash, moving_hash, sensor_lab
     st.markdown(f"### Data Integrity: {sensor_label} vs TMC Base")
     st.code(f"TMC Reference SHA-256: {ref_hash}\n{sensor_label} Moving SHA-256: {moving_hash}", language="text")
 
-    with st.spinner(f"Aligning {sensor_label} using Homography Feature Matching..."):
+    with st.spinner(f"Aligning {sensor_label} using Hybrid RANSAC + Quasi-Newton Optimization..."):
         final_np, coarse_rmse, inliers, matched_pts, opt_shift, nmi_score = register_images_robust(ref_np, moving_np)
         entropy = calculate_grid_entropy(matched_pts, ref_np.shape)
 
@@ -215,7 +261,6 @@ def render_alignment_module(ref_np, moving_np, ref_hash, moving_hash, sensor_lab
     st.markdown("### Advanced Evaluation Metrics")
     m1, m2, m3, m4, m5 = st.columns(5)
     
-    # Check registration status to color metrics accurately
     is_aligned = inliers >= 10
     status_color = "normal" if is_aligned else "inverse"
     
@@ -224,7 +269,7 @@ def render_alignment_module(ref_np, moving_np, ref_hash, moving_hash, sensor_lab
               delta_color=status_color)
               
     m2.metric("Total Shift (dx, dy)", f"({opt_shift[0]:.1f}, {opt_shift[1]:.1f}) px", 
-              delta="Homography Refined" if is_aligned else "No Warp Applied", 
+              delta="Hybrid Refined" if is_aligned else "No Warp Applied", 
               delta_color="normal" if is_aligned else "off")
               
     m3.metric("Grid Uniformity", f"{entropy:.4f}", 
