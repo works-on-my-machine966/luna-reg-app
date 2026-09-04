@@ -329,19 +329,6 @@ def render_alignment_module(ref_np, moving_np, ref_hash, moving_hash, sensor_lab
                 key=f"dl_{sensor_label}"
             )
 
-st.markdown("### 💾 Export High-Resolution Aligned Frame")
-
-# Encode numpy array directly to native full-res PNG
-is_success, buffer = cv2.imencode(".png", cv2.cvtColor(final_np, cv2.COLOR_RGB2BGR))
-if is_success:
-    st.download_button(
-        label=f"Download Full-Res {sensor_label} (Native PNG)",
-        data=buffer.tobytes(),
-        file_name=f"Chandrayaan2_FullRes_{sensor_label}_Aligned.png",
-        mime="image/png",
-        key=f"dl_fullres_{sensor_label}"
-    )
-
     return final_np, metrics
 
 # --- UI MAIN LAYOUT ---
