@@ -1,0 +1,29 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments (DO NOT push your local venv to GitHub)
+venv/
+env/
+ENV/
+.venv/
+
+# Local Environment Variables & Secrets
+.env
+*.env
+
+# Generated Output / Temporary Files
+*.pdf
+temp/
+tmp/
+.temp/
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+
+# Operating System Metadata
+.DS_Store
+Thumbs.db
