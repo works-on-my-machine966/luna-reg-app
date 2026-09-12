@@ -32,9 +32,24 @@
 ### Prerequisites
 * Python 3.10 or higher
 
-### Installation
-
+### Installation & Setup
 1. Clone the repository:
    ```bash
    git clone [https://github.com/your-username/luna-reg.git](https://github.com/your-username/luna-reg.git)
    cd luna-reg
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+3. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+
+### Run the application
+Launch the Streamlit application:
+
+   ```bash
+   streamlit run app.py
