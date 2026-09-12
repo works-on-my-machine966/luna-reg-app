@@ -1,7 +1,7 @@
 # 🌙 LUNA-REG: Automated Multi-Sensor Lunar Image Registration Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-app.streamlit.app)
 
 **LUNA-REG** is a high-precision satellite image registration pipeline built for lunar spatial data (such as Chandrayaan-2 TMC, OHRC, and IIRS sensors). It handles cross-modal alignment using a two-stage hybrid approach: coarse keypoint matching via AKAZE/ORB + RANSAC, followed by sub-pixel fine optimization using Normalized Mutual Information (NMI).
