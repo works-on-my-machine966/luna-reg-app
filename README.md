@@ -35,7 +35,7 @@
 ### Installation & Setup
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/your-username/luna-reg.git](https://github.com/your-username/luna-reg.git)
+   git clone [https://github.com/works-on-my-machine966/luna-reg.git](https://github.com/works-on-my-machine966/luna-reg.git)
    cd luna-reg
 
 2. Create and activate a virtual environment:
